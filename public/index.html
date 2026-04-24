@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Stride · Hockey AI Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#07090F; --surface:#10141F; --surface-hi:#1A1F2E; --border:#222A3D;
+    --ice:#5BC0EB; --ice-deep:#2B7FB8; --fire:#FF2D2D;
+    --text:#F0F4FA; --muted:#7B8499; --muted-dim:#4A5266;
+    --good:#4ADE80; --warn:#FBBF24;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+  html,body{background:#000;font-family:'Manrope',-apple-system,sans-serif;color:var(--text);overscroll-behavior:none}
+  body{min-height:100vh;min-height:100dvh}
+  .bebas{font-family:'Bebas Neue',sans-serif;letter-spacing:.04em}
+  .mono{font-family:'JetBrains Mono',monospace}
+  .no-sb::-webkit-scrollbar{display:none}
+  .no-sb{scrollbar-width:none}
+  button{cursor:pointer;border:none;background:none;color:inherit;font:inherit;transition:transform .1s}
+  button:active{transform:scale(.98)}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .fade-up{animation:fadeUp .35s ease-out}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .pulse{animation:pulse 1.5s ease-in-out infinite}
+  #phone{position:relative;margin:0 auto;max-width:480px;min-height:100vh;min-height:100dvh;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+  #status{display:flex;justify-content:space-between;align-items:center;padding:max(1rem,env(safe-area-inset-top)) 1.5rem .25rem;font-size:.75rem;font-weight:600}
+  #screen{flex:1;overflow-y:auto;padding-bottom:7rem}
+  .page{animation:fadeUp .35s ease-out;padding:.5rem 1.5rem 0}
+  #tabbar{position:absolute;bottom:0;left:0;right:0;padding:.5rem .5rem max(1.5rem,env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--border)}
+  #tabbar>div{display:flex;justify-content:space-around}
+  .tab{display:flex;flex-direction:column;align-items:center;gap:.25rem;padding:.25rem .75rem}
+  .tab-plus{width:2.75rem;height:2.75rem;border-radius:1rem;display:flex;align-items:center;justify-content:center;margin-top:-.25rem;background:var(--fire);box-shadow:0 6px 20px rgba(255,45,45,.4)}
+  h1.title{font-family:'Bebas Neue';font-size:38px;line-height:1;letter-spacing:.01em}
+  .slabel{font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;font-family:'JetBrains Mono';font-weight:500;color:var(--muted);margin-bottom:.5rem}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:1rem;padding:1rem}
+  .btn{width:100%;padding:1.25rem;border-radius:1.5rem;display:flex;align-items:center;justify-content:space-between}
+  .btn-red{background:linear-gradient(135deg,var(--fire),#C71F1F);box-shadow:0 10px 30px rgba(255,45,45,.25);color:#fff}
+  .btn-blue{background:linear-gradient(135deg,var(--ice),var(--ice-deep));box-shadow:0 10px 30px rgba(91,192,235,.2);color:var(--bg)}
+  .sbtn{width:100%;padding:1.25rem;border-radius:1rem;display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border)}
+  .sicon{width:3rem;height:3rem;border-radius:.75rem;display:flex;align-items:center;justify-content:center;background:var(--surface-hi);font-size:1.5rem}
+</style>
+</head>
+<body>
+<div id="phone">
+  <div id="status"><span>9:41</span><div style="display:flex;gap:.375rem;align-items:center"><span style="opacity:.8">●●●●</span><span style="opacity:.8">5G</span><span style="margin-left:.25rem">▮▮▮</span></div></div>
+  <div id="screen"></div>
+  <div id="tabbar"></div>
+</div>
+<script type="module">
+const state={screen:"home",skill:null,videoFile:null,videoUrl:null,result:null,error:null,progress:0,stage:0,frames:[],stageText:""};
+const SKILLS=[{id:"wrist",name:"Wrist Shot",icon:"🎯"},{id:"slap",name:"Slap Shot",icon:"⚡"},{id:"stride",name:"Skating Stride",icon:"💨"},{id:"stick",name:"Stickhandling",icon:"🔵"},{id:"back",name:"Backhand",icon:"↩️"}];
+
+async function extractFrames(file,n,onProg,onStage){
+  const url=URL.createObjectURL(file);
+  const v=document.createElement("video");
+  v.muted=true;v.playsInline=true;v.preload="auto";
+  v.setAttribute("muted","");v.setAttribute("playsinline","");v.setAttribute("webkit-playsinline","");
+  v.style.cssText="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0";
+  document.body.appendChild(v);
+  const cleanup=()=>{try{document.body.removeChild(v)}catch{}URL.revokeObjectURL(url)};
+  try{
+    onStage?.("Loading video");
+    await new Promise((resolve,reject)=>{
+      const t=setTimeout(()=>reject(new Error("Video load timed out")),20000);
+      const ready=()=>{clearTimeout(t);if(!v.videoWidth||!v.videoHeight)return reject(new Error("No dimensions"));if(!isFinite(v.duration)||v.duration<=0)return reject(new Error("Invalid duration"));resolve()};
+      const err=()=>{clearTimeout(t);const e=v.error;const m={1:"ABORTED",2:"NETWORK",3:"DECODE",4:"SRC_NOT_SUPPORTED"};reject(new Error(`Video failed: ${m[e?.code]||"unknown"}. Try a different format or shorter clip.`))};
+      v.addEventListener("loadeddata",ready);v.addEventListener("canplay",ready);v.addEventListener("error",err);
+      v.src=url;v.load();
+    });
+    const dur=v.duration;
+    const c=document.createElement("canvas");
+    const w=640;c.width=w;c.height=Math.round(w*(v.videoHeight/v.videoWidth));
+    const ctx=c.getContext("2d");
+    onStage?.("Extracting frames");
+    const frames=[];
+    for(let i=0;i<n;i++){
+      const time=(dur/(n+1))*(i+1);
+      await new Promise((res,rej)=>{
+        const s=()=>{v.removeEventListener("seeked",s);res()};
+        v.addEventListener("seeked",s);v.currentTime=time;
+        setTimeout(()=>{v.removeEventListener("seeked",s);rej(new Error("Seek timeout"))},8000);
+      });
+      ctx.drawImage(v,0,0,c.width,c.height);
+      const d=c.toDataURL("image/jpeg",0.7);
+      frames.push({time:time.toFixed(1),base64:d.split(",")[1],preview:d});
+      onProg?.((i+1)/n);
+    }
+    cleanup();return{frames,duration:dur};
+  }catch(err){cleanup();throw err}
+}
+
+async function callBackend(frames,skill,duration){
+  const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({frames,skill,duration})});
+  if(!r.ok){const e=await r.json().catch(()=>({error:"Unknown"}));throw new Error(`${e.error||"Failed"}${e.detail?": "+e.detail:""}`)}
+  return await r.json();
+}
+
+const icons={
+  plus:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
+  back:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>',
+  right:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+  check:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  upload:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>',
+  sparkle:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>',
+  alert:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>',
+  home:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  stats:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>',
+  user:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  logo:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20"/><path d="M12 2v20"/><path d="m4.93 4.93 14.14 14.14"/><path d="m19.07 4.93-14.14 14.14"/></svg>',
+};
+
+function go(s){state.screen=s;renderScreen();renderTabBar()}
+
+function renderScreen(){
+  const el=document.getElementById("screen");if(!el)return;
+  const fns={home:Home,skill:Skill,upload:Upload,analyzing:Analyzing,results:Results,workout:Workout,error:ErrorS};
+  const fn=fns[state.screen]||Home;
+  el.innerHTML=`<div class="page">${fn()}</div>`;
+  bind();
+}
+
+function Home(){return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem">
+    <div style="display:flex;align-items:center;gap:.5rem;color:var(--ice)">${icons.logo}<span class="bebas" style="font-size:1.5rem;color:var(--text)">STRIDE</span><span class="mono" style="margin-left:.25rem;padding:.125rem .375rem;border-radius:.25rem;font-size:9px;font-weight:700;background:rgba(255,45,45,.2);color:var(--fire);letter-spacing:.1em">LIVE AI</span></div>
+    <div style="width:2.25rem;height:2.25rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:var(--surface-hi);border:1px solid var(--border)"><span class="bebas" style="font-size:.875rem;color:var(--ice)">JM</span></div>
+  </div>
+  <p class="slabel" style="margin-bottom:.25rem">Welcome back</p>
+  <h1 class="bebas" style="font-size:44px;line-height:1">LET'S GET<br>SHARPER.</h1>
+  <button data-a="new" class="btn btn-red" style="margin-top:1.75rem">
+    <div style="text-align:left"><div class="mono" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;opacity:.8;margin-bottom:.25rem;font-weight:500">New session</div><div class="bebas" style="font-size:1.625rem">ANALYZE A CLIP</div></div>
+    <div style="width:3rem;height:3rem;border-radius:1rem;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25)">${icons.plus}</div>
+  </button>
+  <div style="margin-top:1.75rem;padding:1.25rem;border-radius:1rem;background:rgba(91,192,235,.06);border:1px solid rgba(91,192,235,.2)">
+    <div style="display:flex;gap:.75rem;align-items:flex-start"><div style="color:var(--ice);flex-shrink:0;margin-top:.125rem">${icons.sparkle}</div><div><div style="font-size:.875rem;font-weight:700">Real AI analysis</div><div style="margin-top:.25rem;font-size:.75rem;color:var(--muted);line-height:1.5">Your video is broken into frames and sent to Claude, who reviews your mechanics and builds a personalized plan.</div></div></div>
+  </div>
+  ${state.result?`
+    <div style="margin-top:2rem;margin-bottom:.75rem"><h2 class="slabel" style="font-weight:700">Last session</h2></div>
+    <button data-a="view-last" class="card" style="width:100%;display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:.75rem"><div style="width:3rem;height:3rem;border-radius:.75rem;display:flex;align-items:center;justify-content:center;background:var(--surface-hi)">🎬</div><div style="text-align:left"><div style="font-size:.875rem;font-weight:700">${SKILLS.find(s=>s.id===state.skill)?.name||""}</div><div style="font-size:.75rem;margin-top:.125rem;color:var(--muted)">Just now</div></div></div>
+      <div style="display:flex;align-items:center;gap:.75rem"><div style="text-align:right"><div class="bebas" style="font-size:1.25rem;line-height:1">${state.result.score}</div><div class="mono" style="font-size:10px;color:var(--ice);font-weight:600">${state.result.grade}</div></div><div style="color:var(--muted-dim)">${icons.right}</div></div>
+    </button>`:""}`}
+
+function Skill(){return `
+  <button data-a="back-home" style="display:flex;align-items:center;gap:.25rem;margin-bottom:1.5rem;color:var(--muted)">${icons.back}<span style="font-size:.875rem;font-weight:600">Back</span></button>
+  <p class="slabel">Step 1 of 2</p>
+  <h1 class="title">WHAT ARE WE<br>WORKING ON?</h1>
+  <p style="margin-top:.75rem;font-size:.875rem;color:var(--muted)">Pick the skill in your video so the AI knows what to look for.</p>
+  <div style="margin-top:1.75rem;display:flex;flex-direction:column;gap:.75rem">
+    ${SKILLS.map(s=>`<button data-a="pick-skill" data-skill="${s.id}" class="sbtn"><div style="display:flex;align-items:center;gap:1rem"><div class="sicon">${s.icon}</div><span class="bebas" style="font-size:1.25rem">${s.name.toUpperCase()}</span></div><div style="color:var(--muted-dim)">${icons.right}</div></button>`).join("")}
+  </div>`}
+
+function Upload(){const sk=SKILLS.find(s=>s.id===state.skill);return `
+  <button data-a="back-skill" style="display:flex;align-items:center;gap:.25rem;margin-bottom:1.5rem;color:var(--muted)">${icons.back}<span style="font-size:.875rem;font-weight:600">Back</span></button>
+  <p class="slabel">Step 2 of 2 · ${sk?.name}</p>
+  <h1 class="title">UPLOAD<br>YOUR CLIP.</h1>
+  <input type="file" accept="video/*" id="fi" style="display:none"/>
+  <button data-a="pick-file" style="width:100%;margin-top:1.75rem;padding:2rem;border-radius:1.5rem;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--surface);border:2px dashed var(--border);min-height:220px">
+    <div style="width:4rem;height:4rem;border-radius:1rem;display:flex;align-items:center;justify-content:center;margin-bottom:1rem;background:var(--surface-hi);color:var(--ice)">${icons.upload}</div>
+    <div class="bebas" style="font-size:1.375rem">TAP TO SELECT VIDEO</div>
+    <div style="margin-top:.375rem;font-size:.8125rem;color:var(--muted)">MP4 · MOV · HEVC from iPhone works</div>
+  </button>
+  <div class="card" style="margin-top:1.5rem;padding:1.25rem">
+    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem;color:var(--ice)">${icons.sparkle}<span class="mono" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;font-weight:600">For best results</span></div>
+    <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:.625rem">
+      ${["Film from the side, full body in frame","Good lighting, avoid backlight","Steady camera (tripod or fence)","3-15 second clip of a single sequence"].map(t=>`<li style="display:flex;gap:.75rem;align-items:flex-start;font-size:.875rem"><div style="color:var(--good);margin-top:.125rem;flex-shrink:0">${icons.check}</div>${t}</li>`).join("")}
+    </ul>
+  </div>`}
+
+function Analyzing(){
+  const stages=["Loading video","Extracting frames","Sending to Claude","Analyzing form","Building plan"];
+  const pct=Math.round(state.progress);
+  return `<p class="slabel" style="color:var(--ice);font-weight:600">Analyzing</p>
+  <h1 class="title">BREAKING DOWN<br>YOUR FORM.</h1>
+  <div style="position:relative;margin-top:1.5rem;border-radius:1.5rem;overflow:hidden;background:#000;aspect-ratio:9/12">
+    ${state.videoUrl?`<video src="${state.videoUrl}" autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover"></video>`:""}
+    <div style="position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,transparent 60%,rgba(0,0,0,.85) 100%)"></div>
+    <div style="position:absolute;top:1rem;left:1rem;right:1rem;display:flex;justify-content:space-between;align-items:center">
+      <div style="padding:.375rem .75rem;border-radius:9999px;display:flex;align-items:center;gap:.5rem;background:rgba(0,0,0,.6);backdrop-filter:blur(8px)"><div class="pulse" style="width:.5rem;height:.5rem;border-radius:9999px;background:var(--fire)"></div><span class="mono" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:#fff;font-weight:600">Claude AI</span></div>
+      <div style="padding:.375rem .75rem;border-radius:9999px;background:rgba(0,0,0,.6);backdrop-filter:blur(8px)"><span class="mono" style="font-size:.75rem;color:#fff;font-weight:600">${pct}%</span></div>
+    </div>
+    <div style="position:absolute;bottom:1rem;left:1rem;right:1rem">
+      <div class="mono" style="font-size:.75rem;margin-bottom:.5rem;color:#fff;opacity:.9;font-weight:500">${state.stageText||stages[state.stage]+"..."}</div>
+      <div style="width:100%;height:4px;border-radius:9999px;overflow:hidden;background:rgba(255,255,255,.2)"><div style="height:100%;border-radius:9999px;transition:all .3s;width:${pct}%;background:var(--ice)"></div></div>
+    </div>
+  </div>
+  ${state.frames.length>0?`<div style="margin-top:1.25rem"><div class="slabel" style="font-weight:600;margin-bottom:.75rem">Frames sent to AI</div><div class="no-sb" style="display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.5rem">${state.frames.map(f=>`<div style="flex-shrink:0;border-radius:.5rem;overflow:hidden;position:relative;width:70px;height:70px;border:1px solid var(--border)"><img src="${f.preview}" alt="" style="width:100%;height:100%;object-fit:cover"/><div class="mono" style="position:absolute;bottom:0;left:0;right:0;padding:.125rem .25rem;font-size:9px;background:rgba(0,0,0,.7);color:#fff">${f.time}s</div></div>`).join("")}</div></div>`:""}
+  <div style="margin-top:1.25rem;display:flex;flex-direction:column;gap:.625rem">
+    ${stages.map((s,i)=>{const d=i<state.stage,a=i===state.stage;return `<div style="display:flex;align-items:center;gap:.75rem"><div style="width:1.5rem;height:1.5rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:${d?"var(--ice)":a?"rgba(91,192,235,.2)":"var(--surface)"};border:1px solid ${d||a?"var(--ice)":"var(--border)"}">${d?`<div style="color:var(--bg)">${icons.check}</div>`:a?'<div class="pulse" style="width:.5rem;height:.5rem;border-radius:9999px;background:var(--ice)"></div>':''}</div><span style="font-size:.875rem;font-weight:${a?700:500};color:${d||a?'var(--text)':'var(--muted-dim)'}">${s}</span></div>`}).join("")}
+  </div>`}
+
+function Results(){
+  const r=state.result;if(!r)return"Loading...";
+  const sk=SKILLS.find(s=>s.id===state.skill);
+  const gc=r.score>=85?"var(--good)":r.score>=70?"var(--ice)":r.score>=50?"var(--warn)":"var(--fire)";
+  const m=r.metrics||[];const sz=240,cx=sz/2,cy=sz/2,rm=80;
+  const pts=m.map((x,i)=>{const a=(Math.PI*2*i/m.length)-Math.PI/2;const rv=(x.value/100)*rm;return{x:cx+Math.cos(a)*rv,y:cy+Math.sin(a)*rv}});
+  const lbls=m.map((x,i)=>{const a=(Math.PI*2*i/m.length)-Math.PI/2;return{x:cx+Math.cos(a)*(rm+22),y:cy+Math.sin(a)*(rm+22),label:x.label}});
+  return `<button data-a="back-home" style="display:flex;align-items:center;gap:.25rem;margin-bottom:1rem;color:var(--muted)">${icons.back}<span style="font-size:.875rem;font-weight:600">Home</span></button>
+  <p class="slabel" style="color:var(--ice);font-weight:600">${sk?.name} · Analyzed by Claude</p>
+  <h1 class="title">YOUR REPORT.</h1>
+  <div style="margin-top:1.5rem;padding:1.5rem;border-radius:1.5rem;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--surface-hi),var(--surface));border:1px solid var(--border)">
+    <div style="position:absolute;top:-2.5rem;right:-2.5rem;width:10rem;height:10rem;border-radius:9999px;opacity:.2;background:radial-gradient(circle,${gc},transparent 70%)"></div>
+    <div style="position:relative">
+      <div class="slabel" style="font-weight:600;margin-bottom:.5rem">Overall score</div>
+      <div style="display:flex;align-items:baseline;gap:.5rem"><span class="bebas" style="font-size:76px;line-height:.9;letter-spacing:-.02em">${r.score}</span><span class="bebas" style="font-size:1.5rem;color:var(--muted)">/100</span></div>
+      <div style="margin-top:.5rem;display:inline-block;padding:.25rem .75rem;border-radius:9999px;background:${gc}22;border:1px solid ${gc}44"><span class="mono" style="font-size:11px;color:${gc};font-weight:700;letter-spacing:.05em">GRADE ${r.grade}</span></div>
+      ${r.summary?`<p style="margin-top:1rem;font-size:.875rem;line-height:1.5">${r.summary}</p>`:""}
+    </div>
+    <div style="margin-top:1.5rem;display:flex;justify-content:center">
+      <svg width="${sz+60}" height="${sz+40}" viewBox="-30 -20 ${sz+60} ${sz+40}">
+        ${[.25,.5,.75,1].map(sc=>`<circle cx="${cx}" cy="${cy}" r="${rm*sc}" fill="none" stroke="var(--border)" stroke-width="1"/>`).join("")}
+        <polygon points="${pts.map(p=>`${p.x},${p.y}`).join(" ")}" fill="var(--ice)" fill-opacity=".25" stroke="var(--ice)" stroke-width="2"/>
+        ${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="3" fill="var(--ice)"/>`).join("")}
+        ${lbls.map(l=>`<text x="${l.x}" y="${l.y}" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono" font-size="10" font-weight="600" fill="var(--muted)">${l.label}</text>`).join("")}
+      </svg>
+    </div>
+  </div>
+  ${r.strengths?.length?`<div style="margin-top:1.5rem"><div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem"><div style="width:4px;height:1rem;border-radius:9999px;background:var(--good)"></div><h2 class="slabel" style="font-weight:700;margin:0">What's working</h2></div><div class="card" style="display:flex;flex-direction:column;gap:.75rem">${r.strengths.map(s=>`<div style="display:flex;gap:.75rem;align-items:flex-start"><div style="color:var(--good);margin-top:.125rem;flex-shrink:0">${icons.check}</div><span style="font-size:.875rem;line-height:1.5">${s}</span></div>`).join("")}</div></div>`:""}
+  ${r.improvements?.length?`<div style="margin-top:1.5rem"><div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem"><div style="width:4px;height:1rem;border-radius:9999px;background:var(--fire)"></div><h2 class="slabel" style="font-weight:700;margin:0">Coach's notes</h2></div><div style="display:flex;flex-direction:column;gap:.75rem">${r.improvements.map((imp,i)=>`<div class="card"><div style="display:flex;align-items:flex-start;gap:.75rem"><div style="width:1.75rem;height:1.75rem;border-radius:.5rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(255,45,45,.15)"><span class="mono" style="color:var(--fire);font-size:.75rem;font-weight:700">${i+1}</span></div><div style="flex:1"><div style="font-size:.875rem;font-weight:700">${imp.title}</div><div style="margin-top:.375rem;font-size:.8125rem;color:var(--muted);line-height:1.5">${imp.detail}</div></div></div></div>`).join("")}</div></div>`:""}
+  ${r.workout?`<button data-a="show-workout" class="btn btn-blue" style="margin-top:1.75rem"><div style="text-align:left"><div class="mono" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;opacity:.9;margin-bottom:.25rem;font-weight:700">Next step</div><div class="bebas" style="font-size:1.375rem">SEE MY WORKOUT PLAN</div></div><div style="color:var(--bg)">${icons.right}</div></button>`:""}`}
+
+function Workout(){
+  const w=state.result?.workout;if(!w)return"No workout";
+  return `<button data-a="back-results" style="display:flex;align-items:center;gap:.25rem;margin-bottom:1rem;color:var(--muted)">${icons.back}<span style="font-size:.875rem;font-weight:600">Back to report</span></button>
+  <p class="slabel" style="color:var(--ice);font-weight:600">${w.weeks||4}-week plan · Personalized</p>
+  <h1 class="title">TRAIN THE FIX.</h1>
+  <p style="margin-top:.75rem;font-size:.875rem;color:var(--muted)">Built around your weakest link: <span style="color:var(--ice);font-weight:700">${w.focus||"identified weaknesses"}</span></p>
+  <div style="margin-top:1.75rem;display:flex;flex-direction:column;gap:.75rem">
+    ${w.days.map(day=>`<div style="border-radius:1rem;overflow:hidden;background:var(--surface);border:1px solid var(--border)"><div style="padding:1.25rem"><div class="slabel" style="color:var(--ice);font-weight:600;margin-bottom:0">${day.day}</div><div class="bebas" style="font-size:1.25rem;margin-top:.25rem">${(day.title||"").toUpperCase()}</div><div style="margin-top:.25rem;font-size:.75rem;color:var(--muted)">${day.drills?.length||0} drills</div></div><div style="padding:0 1.25rem 1.25rem;display:flex;flex-direction:column;gap:.75rem">${(day.drills||[]).map((d,j)=>`<div style="display:flex;gap:.75rem;padding-top:.75rem;border-top:1px solid var(--border)"><div style="width:1.75rem;height:1.75rem;border-radius:.5rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.125rem;background:var(--surface-hi)"><span class="mono" style="color:var(--ice);font-size:.75rem;font-weight:700">${j+1}</span></div><div style="flex:1"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:.5rem"><div style="font-size:.875rem;font-weight:700">${d.name}</div><div class="mono" style="flex-shrink:0;font-size:.75rem;color:var(--ice);font-weight:600">${d.sets||""}</div></div>${d.note?`<div style="margin-top:.25rem;font-size:.75rem;color:var(--muted);line-height:1.5">${d.note}</div>`:""}</div></div>`).join("")}</div></div>`).join("")}
+  </div>
+  <button data-a="back-results" style="width:100%;margin-top:1.75rem;padding:1.25rem;border-radius:1.5rem;display:flex;align-items:center;justify-content:center;gap:.5rem;background:var(--fire);box-shadow:0 10px 30px rgba(255,45,45,.25);color:#fff"><span class="bebas" style="font-size:1.25rem">🔥 START TODAY'S SESSION</span></button>`}
+
+function ErrorS(){return `
+  <p class="slabel" style="color:var(--fire);font-weight:600">Something went wrong</p>
+  <h1 class="title">ANALYSIS FAILED.</h1>
+  <div style="margin-top:1.5rem;padding:1.25rem;border-radius:1rem;display:flex;align-items:flex-start;gap:.75rem;background:rgba(255,45,45,.08);border:1px solid rgba(255,45,45,.25)"><div style="color:var(--fire);flex-shrink:0;margin-top:.125rem">${icons.alert}</div><div style="font-size:.875rem;line-height:1.5;white-space:pre-wrap">${state.error||"Unknown error"}</div></div>
+  <button data-a="back-skill" style="width:100%;margin-top:1.5rem;padding:1.25rem;border-radius:1.5rem;display:flex;align-items:center;justify-content:center;gap:.5rem;background:var(--ice);color:var(--bg)"><span class="bebas" style="font-size:1.25rem">TRY AGAIN</span></button>
+  <button data-a="back-home" style="width:100%;margin-top:.75rem;padding:1rem;border-radius:1rem;background:var(--surface);border:1px solid var(--border);color:var(--muted);font-size:.875rem;font-weight:600">Back to home</button>`}
+
+function renderTabBar(){
+  const el=document.getElementById("tabbar");if(!el)return;
+  const tabs=[{id:"home",label:"Home",icon:icons.home},{id:"upload",label:"Analyze",icon:icons.plus},{id:"stats",label:"Stats",icon:icons.stats},{id:"profile",label:"Profile",icon:icons.user}];
+  el.innerHTML=`<div>${tabs.map(t=>{const a=state.screen===t.id||(t.id==="upload"&&(state.screen==="skill"||state.screen==="upload"));const p=t.id==="upload";return `<button data-tab="${t.id}" class="tab">${p?`<div class="tab-plus" style="color:#fff">${t.icon}</div>`:`<div style="color:${a?'var(--ice)':'var(--muted-dim)'}">${t.icon}</div><span style="font-size:10px;font-weight:600;color:${a?'var(--ice)':'var(--muted-dim)'}">${t.label}</span>`}</button>`}).join("")}</div>`;
+  el.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{const t=b.dataset.tab;if(t==="upload"){state.error=null;go("skill")}else if(t==="home")go("home");else go(t)}));
+}
+
+function bind(){
+  document.querySelectorAll("[data-a]").forEach(b=>b.addEventListener("click",()=>act(b.dataset.a,b.dataset)));
+  const fi=document.getElementById("fi");
+  if(fi)fi.addEventListener("change",e=>{const f=e.target.files?.[0];if(f)onFile(f)});
+}
+
+function act(a,d){
+  switch(a){
+    case "new":state.error=null;go("skill");break;
+    case "back-home":go("home");break;
+    case "back-skill":state.error=null;go("skill");break;
+    case "back-results":go("results");break;
+    case "view-last":go("results");break;
+    case "pick-skill":state.skill=d.skill;go("upload");break;
+    case "pick-file":document.getElementById("fi")?.click();break;
+    case "show-workout":go("workout");break;
+  }
+}
+
+async function onFile(f){
+  if(!f.type.startsWith("video/")&&!f.name.match(/\.(mp4|mov|m4v|qt|hevc)$/i)){state.error="That doesn't look like a video file.";go("error");return}
+  state.videoFile=f;
+  if(state.videoUrl)URL.revokeObjectURL(state.videoUrl);
+  state.videoUrl=URL.createObjectURL(f);
+  state.frames=[];state.progress=0;state.stage=0;state.stageText="";
+  go("analyzing");run();
+}
+
+async function run(){
+  try{
+    state.progress=5;renderScreen();
+    const{frames,duration}=await extractFrames(state.videoFile,8,
+      fr=>{state.progress=10+fr*35;state.stage=1;renderScreen()},
+      t=>{state.stageText=t;renderScreen()}
+    );
+    state.frames=frames;state.stageText="";state.stage=2;state.progress=50;renderScreen();
+    state.stage=3;
+    const iv=setInterval(()=>{state.progress=Math.min(state.progress+0.5,92);renderScreen()},200);
+    const result=await callBackend(frames,state.skill,duration);
+    clearInterval(iv);
+    state.stage=4;state.progress=98;renderScreen();
+    await new Promise(r=>setTimeout(r,400));
+    state.progress=100;state.result={...result,_meta:{duration,frameCount:frames.length}};renderScreen();
+    await new Promise(r=>setTimeout(r,300));
+    go("results");
+  }catch(err){console.error(err);state.error=err.message||"Analysis failed";go("error")}
+}
+
+renderScreen();renderTabBar();
+</script>
+</body>
+</html>
