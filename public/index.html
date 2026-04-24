@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<title>Stride · Hockey AI Coach</title>
+<title>Rink AI · Hockey Coach</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -128,7 +128,7 @@ function renderScreen(){
 
 function Home(){return `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem">
-    <div style="display:flex;align-items:center;gap:.5rem;color:var(--ice)">${icons.logo}<span class="bebas" style="font-size:1.5rem;color:var(--text)">STRIDE</span><span class="mono" style="margin-left:.25rem;padding:.125rem .375rem;border-radius:.25rem;font-size:9px;font-weight:700;background:rgba(255,45,45,.2);color:var(--fire);letter-spacing:.1em">LIVE AI</span></div>
+    <div style="display:flex;align-items:center;gap:.5rem;color:var(--ice)">${icons.logo}<span class="bebas" style="font-size:1.5rem;color:var(--text)">RINK</span><span class="bebas" style="font-size:1.5rem;color:var(--ice)">AI</span></div>
     <div style="width:2.25rem;height:2.25rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:var(--surface-hi);border:1px solid var(--border)"><span class="bebas" style="font-size:.875rem;color:var(--ice)">JM</span></div>
   </div>
   <p class="slabel" style="margin-bottom:.25rem">Welcome back</p>
@@ -183,17 +183,37 @@ function Analyzing(){
     <div style="position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,transparent 60%,rgba(0,0,0,.85) 100%)"></div>
     <div style="position:absolute;top:1rem;left:1rem;right:1rem;display:flex;justify-content:space-between;align-items:center">
       <div style="padding:.375rem .75rem;border-radius:9999px;display:flex;align-items:center;gap:.5rem;background:rgba(0,0,0,.6);backdrop-filter:blur(8px)"><div class="pulse" style="width:.5rem;height:.5rem;border-radius:9999px;background:var(--fire)"></div><span class="mono" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:#fff;font-weight:600">Claude AI</span></div>
-      <div style="padding:.375rem .75rem;border-radius:9999px;background:rgba(0,0,0,.6);backdrop-filter:blur(8px)"><span class="mono" style="font-size:.75rem;color:#fff;font-weight:600">${pct}%</span></div>
+      <div style="padding:.375rem .75rem;border-radius:9999px;background:rgba(0,0,0,.6);backdrop-filter:blur(8px)"><span id="pct" class="mono" style="font-size:.75rem;color:#fff;font-weight:600">${pct}%</span></div>
     </div>
     <div style="position:absolute;bottom:1rem;left:1rem;right:1rem">
-      <div class="mono" style="font-size:.75rem;margin-bottom:.5rem;color:#fff;opacity:.9;font-weight:500">${state.stageText||stages[state.stage]+"..."}</div>
-      <div style="width:100%;height:4px;border-radius:9999px;overflow:hidden;background:rgba(255,255,255,.2)"><div style="height:100%;border-radius:9999px;transition:all .3s;width:${pct}%;background:var(--ice)"></div></div>
+      <div id="stagetext" class="mono" style="font-size:.75rem;margin-bottom:.5rem;color:#fff;opacity:.9;font-weight:500">${state.stageText||stages[state.stage]+"..."}</div>
+      <div style="width:100%;height:4px;border-radius:9999px;overflow:hidden;background:rgba(255,255,255,.2)"><div id="pbar" style="height:100%;border-radius:9999px;transition:all .3s;width:${pct}%;background:var(--ice)"></div></div>
     </div>
   </div>
-  ${state.frames.length>0?`<div style="margin-top:1.25rem"><div class="slabel" style="font-weight:600;margin-bottom:.75rem">Frames sent to AI</div><div class="no-sb" style="display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.5rem">${state.frames.map(f=>`<div style="flex-shrink:0;border-radius:.5rem;overflow:hidden;position:relative;width:70px;height:70px;border:1px solid var(--border)"><img src="${f.preview}" alt="" style="width:100%;height:100%;object-fit:cover"/><div class="mono" style="position:absolute;bottom:0;left:0;right:0;padding:.125rem .25rem;font-size:9px;background:rgba(0,0,0,.7);color:#fff">${f.time}s</div></div>`).join("")}</div></div>`:""}
-  <div style="margin-top:1.25rem;display:flex;flex-direction:column;gap:.625rem">
+  <div id="framelist">${state.frames.length>0?`<div style="margin-top:1.25rem"><div class="slabel" style="font-weight:600;margin-bottom:.75rem">Frames sent to AI</div><div class="no-sb" style="display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.5rem">${state.frames.map(f=>`<div style="flex-shrink:0;border-radius:.5rem;overflow:hidden;position:relative;width:70px;height:70px;border:1px solid var(--border)"><img src="${f.preview}" alt="" style="width:100%;height:100%;object-fit:cover"/><div class="mono" style="position:absolute;bottom:0;left:0;right:0;padding:.125rem .25rem;font-size:9px;background:rgba(0,0,0,.7);color:#fff">${f.time}s</div></div>`).join("")}</div></div>`:""}</div>
+  <div id="stagelist" style="margin-top:1.25rem;display:flex;flex-direction:column;gap:.625rem">
     ${stages.map((s,i)=>{const d=i<state.stage,a=i===state.stage;return `<div style="display:flex;align-items:center;gap:.75rem"><div style="width:1.5rem;height:1.5rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:${d?"var(--ice)":a?"rgba(91,192,235,.2)":"var(--surface)"};border:1px solid ${d||a?"var(--ice)":"var(--border)"}">${d?`<div style="color:var(--bg)">${icons.check}</div>`:a?'<div class="pulse" style="width:.5rem;height:.5rem;border-radius:9999px;background:var(--ice)"></div>':''}</div><span style="font-size:.875rem;font-weight:${a?700:500};color:${d||a?'var(--text)':'var(--muted-dim)'}">${s}</span></div>`}).join("")}
   </div>`}
+
+function updateAnalyzing(){
+  if(state.screen!=="analyzing")return;
+  const stages=["Loading video","Extracting frames","Sending to Claude","Analyzing form","Building plan"];
+  const pct=Math.round(state.progress);
+  const pctEl=document.getElementById("pct");
+  const pbarEl=document.getElementById("pbar");
+  const stEl=document.getElementById("stagetext");
+  const flEl=document.getElementById("framelist");
+  const slEl=document.getElementById("stagelist");
+  if(pctEl)pctEl.textContent=pct+"%";
+  if(pbarEl)pbarEl.style.width=pct+"%";
+  if(stEl)stEl.textContent=state.stageText||stages[state.stage]+"...";
+  if(flEl&&state.frames.length>0&&!flEl.hasChildNodes()){
+    flEl.innerHTML=`<div style="margin-top:1.25rem"><div class="slabel" style="font-weight:600;margin-bottom:.75rem">Frames sent to AI</div><div class="no-sb" style="display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.5rem">${state.frames.map(f=>`<div style="flex-shrink:0;border-radius:.5rem;overflow:hidden;position:relative;width:70px;height:70px;border:1px solid var(--border)"><img src="${f.preview}" alt="" style="width:100%;height:100%;object-fit:cover"/><div class="mono" style="position:absolute;bottom:0;left:0;right:0;padding:.125rem .25rem;font-size:9px;background:rgba(0,0,0,.7);color:#fff">${f.time}s</div></div>`).join("")}</div></div>`;
+  }
+  if(slEl){
+    slEl.innerHTML=stages.map((s,i)=>{const d=i<state.stage,a=i===state.stage;return `<div style="display:flex;align-items:center;gap:.75rem"><div style="width:1.5rem;height:1.5rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:${d?"var(--ice)":a?"rgba(91,192,235,.2)":"var(--surface)"};border:1px solid ${d||a?"var(--ice)":"var(--border)"}">${d?`<div style="color:var(--bg)">${icons.check}</div>`:a?'<div class="pulse" style="width:.5rem;height:.5rem;border-radius:9999px;background:var(--ice)"></div>':''}</div><span style="font-size:.875rem;font-weight:${a?700:500};color:${d||a?'var(--text)':'var(--muted-dim)'}">${s}</span></div>`}).join("");
+  }
+}
 
 function Results(){
   const r=state.result;if(!r)return"Loading...";
@@ -283,17 +303,17 @@ async function run(){
   try{
     state.progress=5;renderScreen();
     const{frames,duration}=await extractFrames(state.videoFile,8,
-      fr=>{state.progress=10+fr*35;state.stage=1;renderScreen()},
-      t=>{state.stageText=t;renderScreen()}
+      fr=>{state.progress=10+fr*35;state.stage=1;updateAnalyzing()},
+      t=>{state.stageText=t;updateAnalyzing()}
     );
-    state.frames=frames;state.stageText="";state.stage=2;state.progress=50;renderScreen();
+    state.frames=frames;state.stageText="";state.stage=2;state.progress=50;updateAnalyzing();
     state.stage=3;
-    const iv=setInterval(()=>{state.progress=Math.min(state.progress+0.5,92);renderScreen()},200);
+    const iv=setInterval(()=>{state.progress=Math.min(state.progress+0.5,92);updateAnalyzing()},200);
     const result=await callBackend(frames,state.skill,duration);
     clearInterval(iv);
-    state.stage=4;state.progress=98;renderScreen();
+    state.stage=4;state.progress=98;updateAnalyzing();
     await new Promise(r=>setTimeout(r,400));
-    state.progress=100;state.result={...result,_meta:{duration,frameCount:frames.length}};renderScreen();
+    state.progress=100;state.result={...result,_meta:{duration,frameCount:frames.length}};updateAnalyzing();
     await new Promise(r=>setTimeout(r,300));
     go("results");
   }catch(err){console.error(err);state.error=err.message||"Analysis failed";go("error")}
