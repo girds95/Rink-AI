@@ -1,10 +1,10 @@
 const SKILLS = {
-  wrist: { name: "Wrist Shot", metrics: ["Power", "Form", "Release", "Balance", "Accuracy"], focusAreas: "stance, hand separation, puck position on blade, weight transfer, wrist snap, follow-through height, head/eye position" },
-  snap: { name: "Snap Shot", metrics: ["Power", "Quickness", "Release", "Balance", "Accuracy"], focusAreas: "compact backswing (short, no full windup), quick load on the stick blade, snap of the wrists at release, weight transfer over the front leg, puck position relative to feet, follow-through. Snap shot differs from wrist shot in that it has a small backswing and is meant to be quick and deceptive — judge it on speed of release more than raw power." },
-  slap: { name: "Slap Shot", metrics: ["Power", "Form", "Release", "Balance", "Accuracy"], focusAreas: "backswing height, stick flex, weight transfer, hip rotation, plant foot direction, contact point, follow-through, head position" },
-  stride: { name: "Skating Stride", metrics: ["Power", "Extension", "Recovery", "Balance", "Edge Work"], focusAreas: "knee bend, push-leg extension, recovery foot height, posture, lateral sway, edge engagement, stride frequency" },
-  stick: { name: "Stickhandling", metrics: ["Control", "Hand Speed", "Vision", "Deception", "Range"], focusAreas: "hand position, top-hand rotation, head position, puck contact area, tempo variation, range of motion" },
-  back: { name: "Backhand", metrics: ["Power", "Form", "Release", "Balance", "Accuracy"], focusAreas: "puck cup, bottom-hand engagement, puck position in stance, follow-through, weight transfer, head position" },
+  wrist: { name: "Wrist Shot", metrics: ["Power", "Form", "Release", "Balance", "Accuracy"], focusAreas: "stance, hand separation, puck position on blade, weight transfer, wrist snap, follow-through height, head/eye position. The video may be on-ice or off-ice (shooting pad in a garage, driveway, basement, or backyard) — judge mechanics the same way regardless of surface. The shooter may be in skates, sneakers, or running shoes; this does not change the analysis of upper-body and shooting mechanics." },
+  snap: { name: "Snap Shot", metrics: ["Power", "Quickness", "Release", "Balance", "Accuracy"], focusAreas: "compact backswing (short, no full windup), quick load on the stick blade, snap of the wrists at release, weight transfer over the front leg, puck position relative to feet, follow-through. Snap shot differs from wrist shot in that it has a small backswing and is meant to be quick and deceptive — judge it on speed of release more than raw power. The video may be on-ice or off-ice (shooting pad in a garage, driveway, basement, or backyard) — judge the mechanics the same regardless of surface or footwear." },
+  slap: { name: "Slap Shot", metrics: ["Power", "Form", "Release", "Balance", "Accuracy"], focusAreas: "backswing height, stick flex, weight transfer, hip rotation, plant foot direction, contact point, follow-through, head position. The video may be on-ice or off-ice (shooting pad) — judge mechanics the same way regardless of surface or footwear." },
+  stride: { name: "Skating Stride", metrics: ["Power", "Extension", "Recovery", "Balance", "Edge Work"], focusAreas: "knee bend, push-leg extension, recovery foot height, posture, lateral sway, edge engagement, stride frequency. This skill requires on-ice video or skates on a synthetic ice / slideboard surface. If the video shows the player off-ice in sneakers, set score to 0 and explain in summary that skating analysis requires ice or a synthetic skating surface." },
+  stick: { name: "Stickhandling", metrics: ["Control", "Hand Speed", "Vision", "Deception", "Range"], focusAreas: "hand position, top-hand rotation, head position, puck contact area, tempo variation, range of motion. Stickhandling can be analyzed on or off ice (with a ball, puck, or stickhandling ball on a smooth surface)." },
+  back: { name: "Backhand", metrics: ["Power", "Form", "Release", "Balance", "Accuracy"], focusAreas: "puck cup, bottom-hand engagement, puck position in stance, follow-through, weight transfer, head position. The video may be on-ice or off-ice (shooting pad) — judge mechanics the same way regardless of surface or footwear." },
 };
 
 export default async function handler(req, res) {
@@ -46,7 +46,7 @@ Respond with ONLY valid JSON, no markdown fences:
   }
 }
 
-Rules: 2-4 strengths, 2-4 improvements, 3 workout days with 3-5 drills each. Poor video quality: lower scores, say so in summary. Wrong skill: score 0, explain. Be specific about what you actually saw.`;
+Rules: 2-4 strengths, 2-4 improvements, 3 workout days with 3-5 drills each. Poor video quality: lower scores, say so in summary. If the video clearly shows a different skill than ${s.name.toLowerCase()} (e.g. uploaded a stickhandling video for wrist shot analysis), set score to 0 and explain. Off-ice training (garage, driveway, shooting pad) is fully valid for shot analysis — do not penalize for it. Be specific about what you actually saw in the frames.`;
 
     const content = [
       ...frames.map(f => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: f.base64 } })),
