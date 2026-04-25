@@ -55,7 +55,18 @@
 </div>
 <script type="module">
 const state={screen:"home",skill:null,videoFile:null,videoUrl:null,result:null,error:null,progress:0,stage:0,frames:[],stageText:""};
-const SKILLS=[{id:"wrist",name:"Wrist Shot",icon:"🎯"},{id:"snap",name:"Snap Shot",icon:"💥"},{id:"slap",name:"Slap Shot",icon:"⚡"},{id:"stride",name:"Skating Stride",icon:"💨"},{id:"stick",name:"Stickhandling",icon:"🔵"},{id:"back",name:"Backhand",icon:"↩️"}];
+const SKILLS=[
+  {id:"wrist",name:"Wrist Shot",icon:"🎯"},
+  {id:"snap",name:"Snap Shot",icon:"💥"},
+  {id:"slap",name:"Slap Shot",icon:"⚡"},
+  {id:"back",name:"Backhand",icon:"↩️"},
+  {id:"stride",name:"Skating Stride",icon:"💨"},
+  {id:"crossovers",name:"Crossovers",icon:"❌"},
+  {id:"tightturns",name:"Tight Turns",icon:"🌀"},
+  {id:"stops",name:"Hockey Stops",icon:"🛑"},
+  {id:"backwards",name:"Backwards Skating",icon:"⏪"},
+  {id:"stick",name:"Stickhandling",icon:"🔵"},
+];
 
 async function extractFrames(file,n,onProg,onStage){
   const fileInfo=`(${file.name||"video"}, ${(file.size/1024/1024).toFixed(1)}MB, type: ${file.type||"unknown"})`;
@@ -120,9 +131,20 @@ async function extractFrames(file,n,onProg,onStage){
 }
 
 async function callBackend(frames,skill,duration){
-  const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({frames,skill,duration})});
-  if(!r.ok){const e=await r.json().catch(()=>({error:"Unknown"}));throw new Error(`${e.error||"Failed"}${e.detail?": "+e.detail:""}`)}
-  return await r.json();
+  let r;
+  try{
+    r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({frames,skill,duration})});
+  }catch(netErr){
+    throw new Error(`Network error reaching server: ${netErr.message||netErr}`);
+  }
+  if(!r.ok){
+    let detail="";
+    try{const j=await r.json();detail=j.error||"";if(j.detail)detail+=": "+j.detail}catch{detail=`HTTP ${r.status}`}
+    throw new Error(`Server returned ${r.status}: ${detail}`);
+  }
+  let json;
+  try{json=await r.json()}catch(parseErr){throw new Error(`Server response not JSON: ${parseErr.message}`)}
+  return json;
 }
 
 const icons={
@@ -314,12 +336,21 @@ function act(a,d){
 }
 
 async function onFile(f){
-  if(!f.type.startsWith("video/")&&!f.name.match(/\.(mp4|mov|m4v|qt|hevc)$/i)){state.error="That doesn't look like a video file.";go("error");return}
-  state.videoFile=f;
-  if(state.videoUrl)URL.revokeObjectURL(state.videoUrl);
-  state.videoUrl=URL.createObjectURL(f);
-  state.frames=[];state.progress=0;state.stage=0;state.stageText="";
-  go("analyzing");run();
+  try{
+    if(!f){state.error="[E1] No file received from picker";go("error");return}
+    if(!f.type.startsWith("video/")&&!f.name.match(/\.(mp4|mov|m4v|qt|hevc|webm|mkv)$/i)){
+      state.error=`[E2] Not a video file. Got name="${f.name||"none"}" type="${f.type||"empty"}" size=${f.size||0}`;
+      go("error");return;
+    }
+    state.videoFile=f;
+    if(state.videoUrl)URL.revokeObjectURL(state.videoUrl);
+    state.videoUrl=URL.createObjectURL(f);
+    state.frames=[];state.progress=0;state.stage=0;state.stageText="";
+    go("analyzing");run();
+  }catch(err){
+    state.error=`[E3-onFile] ${err?.message||err?.toString()||"unparseable error"}`;
+    go("error");
+  }
 }
 
 async function run(){
@@ -332,17 +363,30 @@ async function run(){
     state.frames=frames;state.stageText="";state.stage=2;state.progress=50;updateAnalyzing();
     state.stage=3;
     const iv=setInterval(()=>{state.progress=Math.min(state.progress+0.5,92);updateAnalyzing()},200);
-    const result=await callBackend(frames,state.skill,duration);
+    let result;
+    try{
+      result=await callBackend(frames,state.skill,duration);
+    }catch(backendErr){
+      clearInterval(iv);
+      throw new Error(`[E4-backend] ${backendErr?.message||"backend call failed"}`);
+    }
     clearInterval(iv);
+    if(!result||typeof result!=="object"){
+      throw new Error(`[E5-bad-response] Backend returned: ${JSON.stringify(result).slice(0,300)}`);
+    }
     state.stage=4;state.progress=98;updateAnalyzing();
     await new Promise(r=>setTimeout(r,400));
     state.progress=100;state.result={...result,_meta:{duration,frameCount:frames.length}};updateAnalyzing();
     await new Promise(r=>setTimeout(r,300));
     go("results");
   }catch(err){
-    console.error("Analysis error:",err);
-    let msg=err?.message||(typeof err==="string"?err:"");
-    if(!msg||msg==="undefined"||msg==="null")msg=`Unknown error (type: ${typeof err}, see browser console for details)`;
+    console.error("[run] Caught error:",err);
+    let msg="";
+    if(err instanceof Error)msg=err.message||err.name||err.toString();
+    else if(typeof err==="string")msg=err;
+    else if(err&&typeof err==="object")msg=JSON.stringify(err).slice(0,500);
+    else msg=`Non-error throw: ${String(err)} (type: ${typeof err})`;
+    if(!msg)msg="[E6] Empty error object — check browser console for details";
     state.error=msg;
     go("error");
   }
