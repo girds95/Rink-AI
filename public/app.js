@@ -14,10 +14,14 @@ const state = {
   stageText: "",
   history: [],
   historyLoading: false,
-  authMode: "magic", // "magic" | "password" | "google"
+  authMode: "magic",
   authBusy: false,
   authMessage: null,
   authMessageType: null,
+  workouts: [],
+  completions: [],
+  activeWorkout: null,
+  expandedDay: 0,
 };
 
 const SKILLS = [
@@ -55,6 +59,11 @@ const icons = {
   switchUser:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
   edit:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
   logout:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>',
+  dumbbell:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.4 14.4 9.6 9.6"/><path d="M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.828 2.829z"/><path d="m21.5 21.5-1.4-1.4"/><path d="M3.9 3.9 2.5 2.5"/><path d="M6.404 12.768a2 2 0 1 1-2.829-2.829l1.768-1.767a2 2 0 1 1-2.828-2.829l2.828-2.828a2 2 0 1 1 2.829 2.828l1.767-1.768a2 2 0 1 1 2.829 2.829z"/></svg>',
+  circle:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>',
+  checkCircle:'<svg width="20" height="20" viewBox="0 0 24 24" fill="var(--good)" stroke="var(--bg)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" fill="var(--good)" stroke="none"/><polyline points="9 12 11 14 15 10"/></svg>',
+  flame:'<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>',
+  calendar:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>',
 };
 
 // ============ FRAME EXTRACTION ============
@@ -162,6 +171,7 @@ function renderScreen() {
     results: Results, workout: Workout, error: ErrorS,
     stats: Stats, profile: Profile, login: Login, profileSetup: ProfileSetup,
     profileEdit: ProfileEdit, profileNew: ProfileNew,
+    workouts: Workouts, workoutDetail: WorkoutDetail,
   };
   const fn = fns[state.screen] || Home;
   el.innerHTML = `<div class="page">${fn()}</div>`;
@@ -477,6 +487,15 @@ function Workout() {
         </div>
       `).join("")}
     </div>
+    ${state.result?._sessionId ? `
+      <button data-a="open-saved-workout" data-id="${state.result._sessionId}" class="btn btn-blue" style="margin-top:1.5rem">
+        <div style="text-align:left">
+          <div class="mono" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;opacity:.9;margin-bottom:.25rem;font-weight:700">Track your progress</div>
+          <div class="bebas" style="font-size:1.25rem">CHECK OFF DRILLS AS YOU GO</div>
+        </div>
+        <div style="color:var(--bg)">${icons.right}</div>
+      </button>
+    ` : ""}
   `;
 }
 
@@ -833,18 +852,236 @@ function Login() {
   `;
 }
 
-// ============ TAB BAR ============
+// ============ WORKOUTS ============
+// Each "workout" is a saved session that has a workout plan attached.
+// We compute "Day X / Y" based on the session creation date and the # of days completed.
+
+async function loadWorkouts() {
+  state.historyLoading = true;
+  renderScreen();
+  try {
+    const profile = auth.getCurrentProfile();
+    const profileId = profile?.id && profile.id !== "local" ? profile.id : null;
+    const sessions = await auth.listSessions(profileId);
+    // Only sessions that actually have a workout
+    state.workouts = (sessions || []).filter(s => s.result?.workout?.days?.length);
+    // Load completions for these sessions
+    const completions = await auth.listCompletions({ profileId });
+    state.completions = completions || [];
+  } catch (err) {
+    console.error("[workouts] load failed:", err);
+    state.workouts = [];
+    state.completions = [];
+  }
+  state.historyLoading = false;
+  renderScreen();
+}
+
+// Compute progress for one session: how many drills completed across all days
+function workoutProgress(session) {
+  const days = session.result?.workout?.days || [];
+  const totalDrills = days.reduce((sum, d) => sum + (d.drills?.length || 0), 0);
+  const completed = (state.completions || []).filter(c => c.session_id === session.id).length;
+  return { completed, total: totalDrills, pct: totalDrills ? Math.round(completed / totalDrills * 100) : 0 };
+}
+
+// "Day X of plan" — based on calendar days since session was created
+function dayOfPlan(session) {
+  const created = new Date(session.created_at);
+  const now = new Date();
+  const dayNum = Math.floor((now - created) / (1000 * 60 * 60 * 24)) + 1;
+  const totalDays = (session.result?.workout?.weeks || 4) * 7;
+  return { day: Math.min(dayNum, totalDays), total: totalDays, finished: dayNum > totalDays };
+}
+
+function isDrillComplete(sessionId, dayIndex, drillIndex) {
+  return (state.completions || []).some(c =>
+    c.session_id === sessionId && c.day_index === dayIndex && c.drill_index === drillIndex
+  );
+}
+
+function Workouts() {
+  if (state.historyLoading) {
+    return `<h1 class="title">WORKOUTS</h1><p style="margin-top:2rem;color:var(--muted);text-align:center">Loading...</p>`;
+  }
+
+  const workouts = state.workouts || [];
+  if (workouts.length === 0) {
+    return `
+      <h1 class="title">WORKOUTS</h1>
+      <p class="slabel" style="margin-top:.75rem">No workout plans yet</p>
+      <div class="card" style="margin-top:1.5rem;text-align:center;padding:2rem 1rem">
+        <div style="font-size:3rem;margin-bottom:.75rem">🏋️</div>
+        <div style="font-size:.875rem;font-weight:700;margin-bottom:.5rem">Workouts appear here automatically</div>
+        <div style="font-size:.8125rem;color:var(--muted);line-height:1.5">After every analysis, the AI builds a 4-week training plan tailored to what it saw. Track your drills, mark them complete, build the habit.</div>
+        <button data-a="new" class="btn btn-red" style="margin-top:1.5rem">
+          <span class="bebas" style="font-size:1.125rem">ANALYZE A CLIP</span>
+          <div style="color:#fff">${icons.right}</div>
+        </button>
+      </div>
+    `;
+  }
+
+  // Group by skill
+  const bySkill = {};
+  workouts.forEach(w => {
+    if (!bySkill[w.skill]) bySkill[w.skill] = [];
+    bySkill[w.skill].push(w);
+  });
+
+  // Compute totals
+  const totalDrills = workouts.reduce((sum, w) => sum + (w.result?.workout?.days?.reduce((s, d) => s + (d.drills?.length || 0), 0) || 0), 0);
+  const totalCompleted = (state.completions || []).length;
+
+  return `
+    <h1 class="title">WORKOUTS</h1>
+    <p class="slabel" style="margin-top:.5rem">${workouts.length} plan${workouts.length === 1 ? '' : 's'} ${auth.getCurrentProfile()?.name ? '· ' + auth.getCurrentProfile().name : ''}</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:1.25rem">
+      <div class="card" style="text-align:center;padding:1rem">
+        <div class="bebas" style="font-size:1.75rem;line-height:1;color:var(--ice)">${totalCompleted}</div>
+        <div class="slabel" style="margin-top:.375rem;margin-bottom:0">Drills done</div>
+      </div>
+      <div class="card" style="text-align:center;padding:1rem">
+        <div class="bebas" style="font-size:1.75rem;line-height:1;color:var(--good)">${totalDrills ? Math.round(totalCompleted/totalDrills*100) : 0}%</div>
+        <div class="slabel" style="margin-top:.375rem;margin-bottom:0">Overall progress</div>
+      </div>
+    </div>
+
+    ${Object.entries(bySkill).map(([skillId, plans]) => `
+      <div style="margin-top:1.75rem">
+        <div style="display:flex;align-items:center;gap:.625rem;margin-bottom:.75rem">
+          <div style="width:2rem;height:2rem;border-radius:.5rem;display:flex;align-items:center;justify-content:center;background:var(--surface-hi);font-size:1rem">${skillIcon(skillId)}</div>
+          <h2 class="bebas" style="font-size:1.125rem;margin:0">${skillName(skillId).toUpperCase()}</h2>
+          <span class="mono" style="font-size:.6875rem;color:var(--muted);margin-left:auto">${plans.length} plan${plans.length === 1 ? '' : 's'}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.5rem">
+          ${plans.map(p => {
+            const prog = workoutProgress(p);
+            const day = dayOfPlan(p);
+            return `
+              <button data-a="open-workout" data-id="${p.id}" class="card" style="text-align:left;width:100%;cursor:pointer">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;margin-bottom:.625rem">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:.875rem;font-weight:700;line-height:1.3">${escapeHtml(p.result?.workout?.focus || "Training plan")}</div>
+                    <div style="display:flex;gap:.625rem;margin-top:.375rem;font-size:.6875rem;color:var(--muted);font-family:'JetBrains Mono';font-weight:600">
+                      <span>${formatDate(p.created_at)}</span>
+                      <span>·</span>
+                      <span>${day.finished ? "PLAN COMPLETE" : `DAY ${day.day}/${day.total}`}</span>
+                    </div>
+                  </div>
+                  <div style="text-align:right;flex-shrink:0">
+                    <div class="bebas" style="font-size:1.125rem;line-height:1;color:${prog.pct === 100 ? 'var(--good)' : 'var(--ice)'}">${prog.completed}<span style="font-size:.75rem;color:var(--muted)">/${prog.total}</span></div>
+                    <div class="mono" style="font-size:9px;color:var(--muted);font-weight:600;margin-top:.125rem">DRILLS</div>
+                  </div>
+                </div>
+                <div style="width:100%;height:4px;border-radius:9999px;overflow:hidden;background:var(--surface-hi)">
+                  <div style="height:100%;width:${prog.pct}%;background:${prog.pct === 100 ? 'var(--good)' : 'var(--ice)'};transition:width .3s"></div>
+                </div>
+              </button>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `).join("")}
+  `;
+}
+
+function WorkoutDetail() {
+  const workout = state.activeWorkout;
+  if (!workout) return `<h1 class="title">WORKOUT</h1><p style="margin-top:2rem;color:var(--muted)">Workout not found.</p><button data-a="back-workouts" class="btn btn-secondary" style="margin-top:1rem">Back</button>`;
+
+  const w = workout.result?.workout;
+  if (!w) return `<h1 class="title">WORKOUT</h1><p style="margin-top:2rem;color:var(--muted)">No workout data.</p>`;
+
+  const prog = workoutProgress(workout);
+  const day = dayOfPlan(workout);
+  const expandedDayIndex = state.expandedDay ?? 0;
+
+  return `
+    <button data-a="back-workouts" style="display:flex;align-items:center;gap:.25rem;margin-bottom:1rem;color:var(--muted)">
+      ${icons.back}<span style="font-size:.875rem;font-weight:600">Back</span>
+    </button>
+    <p class="slabel" style="color:var(--ice);font-weight:600">${skillName(workout.skill)} · ${formatDate(workout.created_at)}</p>
+    <h1 class="title">${escapeHtml((w.focus || "Training plan").toUpperCase())}</h1>
+
+    <div class="card" style="margin-top:1.25rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <div>
+          <div class="slabel" style="margin-bottom:.25rem">${day.finished ? "Plan complete" : `Day ${day.day} of ${day.total}`}</div>
+          <div style="font-size:.8125rem;color:var(--muted)">${prog.completed} of ${prog.total} drills done · ${prog.pct}%</div>
+        </div>
+        <div class="bebas" style="font-size:1.75rem;line-height:1;color:${prog.pct === 100 ? 'var(--good)' : 'var(--ice)'}">${prog.pct}<span style="font-size:.875rem;color:var(--muted)">%</span></div>
+      </div>
+      <div style="width:100%;height:6px;border-radius:9999px;overflow:hidden;background:var(--surface-hi)">
+        <div style="height:100%;width:${prog.pct}%;background:${prog.pct === 100 ? 'var(--good)' : 'var(--ice)'};transition:width .3s"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:1.5rem;display:flex;flex-direction:column;gap:.625rem">
+      ${w.days.map((d, dIdx) => {
+        const dayDrills = d.drills || [];
+        const dayCompleted = dayDrills.filter((_, drIdx) => isDrillComplete(workout.id, dIdx, drIdx)).length;
+        const dayPct = dayDrills.length ? Math.round(dayCompleted / dayDrills.length * 100) : 0;
+        const isExpanded = expandedDayIndex === dIdx;
+        return `
+          <div style="border-radius:1rem;overflow:hidden;background:var(--surface);border:1px solid var(--border)">
+            <button data-a="toggle-day" data-day="${dIdx}" style="width:100%;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;text-align:left">
+              <div style="flex:1;min-width:0">
+                <div class="slabel" style="color:${dayPct===100?'var(--good)':'var(--ice)'};font-weight:600;margin-bottom:.125rem">${d.day}</div>
+                <div class="bebas" style="font-size:1.125rem">${escapeHtml((d.title || "").toUpperCase())}</div>
+                <div style="display:flex;align-items:center;gap:.5rem;margin-top:.375rem">
+                  <div style="flex:1;max-width:120px;height:3px;border-radius:9999px;overflow:hidden;background:var(--surface-hi)">
+                    <div style="height:100%;width:${dayPct}%;background:${dayPct===100?'var(--good)':'var(--ice)'};transition:width .3s"></div>
+                  </div>
+                  <span class="mono" style="font-size:.6875rem;color:var(--muted);font-weight:600">${dayCompleted}/${dayDrills.length}</span>
+                </div>
+              </div>
+              <div style="color:var(--muted);transform:rotate(${isExpanded?'90':'0'}deg);transition:transform .2s">${icons.right}</div>
+            </button>
+            ${isExpanded ? `
+              <div style="padding:0 1.25rem 1.25rem;display:flex;flex-direction:column;gap:.5rem">
+                ${dayDrills.map((dr, drIdx) => {
+                  const done = isDrillComplete(workout.id, dIdx, drIdx);
+                  return `
+                    <button data-a="toggle-drill" data-day="${dIdx}" data-drill="${drIdx}" style="display:flex;gap:.75rem;align-items:flex-start;padding:.75rem;border-radius:.625rem;background:${done?'rgba(74,222,128,.06)':'var(--surface-hi)'};border:1px solid ${done?'rgba(74,222,128,.3)':'var(--border)'};text-align:left;width:100%;cursor:pointer">
+                      <div style="flex-shrink:0;margin-top:.125rem;color:${done?'var(--good)':'var(--muted-dim)'}">${done?icons.checkCircle:icons.circle}</div>
+                      <div style="flex:1;min-width:0">
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.5rem">
+                          <div style="font-size:.875rem;font-weight:700;${done?'text-decoration:line-through;opacity:.7':''}">${escapeHtml(dr.name)}</div>
+                          <div class="mono" style="flex-shrink:0;font-size:.75rem;color:var(--ice);font-weight:600">${escapeHtml(dr.sets || "")}</div>
+                        </div>
+                        ${dr.note ? `<div style="margin-top:.25rem;font-size:.75rem;color:var(--muted);line-height:1.4">${escapeHtml(dr.note)}</div>` : ""}
+                      </div>
+                    </button>
+                  `;
+                }).join("")}
+              </div>
+            ` : ""}
+          </div>
+        `;
+      }).join("")}
+    </div>
+
+    <button data-a="open-original-report" data-id="${workout.id}" style="width:100%;margin-top:1.5rem;padding:1rem;border-radius:1rem;background:var(--surface);border:1px solid var(--border);color:var(--ice);font-size:.875rem;font-weight:600">
+      View original analysis report
+    </button>
+  `;
+}
+
+
 function renderTabBar() {
   const el = document.getElementById("tabbar");
   if (!el) return;
   const tabs = [
     { id: "home", label: "Home", icon: icons.home },
+    { id: "workouts", label: "Workouts", icon: icons.dumbbell },
     { id: "upload", label: "Analyze", icon: icons.plus },
     { id: "stats", label: "Stats", icon: icons.stats },
     { id: "profile", label: "Profile", icon: icons.user },
   ];
   el.innerHTML = `<div>${tabs.map(t => {
-    const a = state.screen === t.id || (t.id === "upload" && (state.screen === "skill" || state.screen === "upload"));
+    const a = state.screen === t.id || (t.id === "upload" && (state.screen === "skill" || state.screen === "upload")) || (t.id === "workouts" && state.screen === "workoutDetail");
     const p = t.id === "upload";
     return `<button data-tab="${t.id}" class="tab">${p
       ? `<div class="tab-plus" style="color:#fff">${t.icon}</div>`
@@ -856,6 +1093,7 @@ function renderTabBar() {
     if (t === "upload") { state.error = null; go("skill"); }
     else if (t === "home") go("home");
     else if (t === "stats") { go("stats"); loadHistory(); }
+    else if (t === "workouts") { go("workouts"); loadWorkouts(); }
     else if (t === "profile") go("profile");
   }));
 }
@@ -1012,6 +1250,78 @@ async function act(a, d) {
         catch (err) { toast(err.message, "error"); }
       }
       break;
+    case "back-workouts":
+      go("workouts"); break;
+    case "open-workout": {
+      const w = (state.workouts || []).find(x => x.id === d.id);
+      if (w) {
+        state.activeWorkout = w;
+        state.expandedDay = 0; // expand first day by default
+        go("workoutDetail");
+      } else {
+        toast("Workout not found", "error");
+      }
+      break;
+    }
+    case "toggle-day": {
+      const idx = parseInt(d.day);
+      state.expandedDay = state.expandedDay === idx ? -1 : idx;
+      renderScreen();
+      break;
+    }
+    case "toggle-drill": {
+      const dayIdx = parseInt(d.day);
+      const drillIdx = parseInt(d.drill);
+      const sessionId = state.activeWorkout?.id;
+      if (!sessionId) break;
+      const wasComplete = isDrillComplete(sessionId, dayIdx, drillIdx);
+      // Optimistic UI: toggle local state immediately
+      if (wasComplete) {
+        state.completions = (state.completions || []).filter(c =>
+          !(c.session_id === sessionId && c.day_index === dayIdx && c.drill_index === drillIdx));
+      } else {
+        state.completions = [...(state.completions || []), {
+          session_id: sessionId,
+          profile_id: auth.getCurrentProfile()?.id,
+          day_index: dayIdx,
+          drill_index: drillIdx,
+          completed_at: new Date().toISOString(),
+        }];
+      }
+      renderScreen();
+      // Sync to backend
+      try {
+        if (wasComplete) await auth.unmarkDrillComplete(sessionId, dayIdx, drillIdx);
+        else await auth.markDrillComplete(sessionId, dayIdx, drillIdx, auth.getCurrentProfile()?.id);
+      } catch (err) {
+        toast("Save failed, will retry", "error");
+        // Reload to be safe
+        await loadWorkouts();
+      }
+      break;
+    }
+    case "open-original-report": {
+      const w = (state.workouts || []).find(x => x.id === d.id);
+      if (w) {
+        state.skill = w.skill;
+        state.result = { ...w.result, _saved: true };
+        go("results");
+      }
+      break;
+    }
+    case "open-saved-workout": {
+      // Coming from results page after analysis — load workouts and open this one
+      await loadWorkouts();
+      const w = (state.workouts || []).find(x => x.id === d.id);
+      if (w) {
+        state.activeWorkout = w;
+        state.expandedDay = 0;
+        go("workoutDetail");
+      } else {
+        go("workouts");
+      }
+      break;
+    }
   }
 }
 
