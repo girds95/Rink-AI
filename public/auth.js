@@ -255,7 +255,6 @@ export function saveLocalSession(session) {
       frame_count: session.frame_count,
     };
     arr.unshift(withId);
-    // cap at 100 to avoid blowing localStorage
     if (arr.length > 100) arr.length = 100;
     localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(arr));
     return withId;
@@ -263,6 +262,75 @@ export function saveLocalSession(session) {
     console.error("[local] save failed:", err);
     return null;
   }
+}
+
+// ============ DRILL COMPLETIONS ============
+const LOCAL_COMPLETIONS_KEY = "rinkai.localCompletions";
+
+export async function listCompletions({ sessionId, profileId } = {}) {
+  if (!currentUser) {
+    try {
+      const raw = localStorage.getItem(LOCAL_COMPLETIONS_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return arr.filter(c =>
+        (!sessionId || c.session_id === sessionId) &&
+        (!profileId || c.profile_id === profileId)
+      );
+    } catch { return []; }
+  }
+  const headers = await getAuthHeader();
+  const params = new URLSearchParams();
+  if (sessionId) params.set("sessionId", sessionId);
+  if (profileId) params.set("profileId", profileId);
+  const url = `/api/completions${params.toString() ? "?" + params.toString() : ""}`;
+  const r = await fetch(url, { headers });
+  if (!r.ok) return [];
+  const { completions } = await r.json();
+  return completions || [];
+}
+
+export async function markDrillComplete(sessionId, dayIndex, drillIndex, profileId) {
+  if (!currentUser || sessionId?.startsWith?.("local-")) {
+    // Local
+    try {
+      const raw = localStorage.getItem(LOCAL_COMPLETIONS_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      // Avoid duplicates
+      if (!arr.some(c => c.session_id === sessionId && c.day_index === dayIndex && c.drill_index === drillIndex)) {
+        arr.push({
+          session_id: sessionId,
+          profile_id: profileId || (currentProfile?.id) || null,
+          day_index: dayIndex,
+          drill_index: drillIndex,
+          completed_at: new Date().toISOString(),
+        });
+        localStorage.setItem(LOCAL_COMPLETIONS_KEY, JSON.stringify(arr));
+      }
+      return true;
+    } catch { return false; }
+  }
+  const headers = { ...(await getAuthHeader()), "Content-Type": "application/json" };
+  const r = await fetch("/api/completions", {
+    method: "POST", headers,
+    body: JSON.stringify({ sessionId, profileId: profileId || currentProfile?.id, dayIndex, drillIndex })
+  });
+  return r.ok;
+}
+
+export async function unmarkDrillComplete(sessionId, dayIndex, drillIndex) {
+  if (!currentUser || sessionId?.startsWith?.("local-")) {
+    try {
+      const raw = localStorage.getItem(LOCAL_COMPLETIONS_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      const filtered = arr.filter(c => !(c.session_id === sessionId && c.day_index === dayIndex && c.drill_index === drillIndex));
+      localStorage.setItem(LOCAL_COMPLETIONS_KEY, JSON.stringify(filtered));
+      return true;
+    } catch { return false; }
+  }
+  const headers = await getAuthHeader();
+  const params = new URLSearchParams({ sessionId, dayIndex: String(dayIndex), drillIndex: String(drillIndex) });
+  const r = await fetch(`/api/completions?${params.toString()}`, { method: "DELETE", headers });
+  return r.ok;
 }
 
 async function migrateLocalSessions() {
