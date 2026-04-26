@@ -273,6 +273,7 @@ function Upload() {
           "Good lighting, avoid backlight",
           "Steady camera (tripod or fence)",
           "Shots: on-ice OR off-ice (shooting pad, garage) both work",
+          "Skating: ice skates OR inline / rollerblades both work",
           "3-15 second clip of a single sequence",
         ].map(t => `<li style="display:flex;gap:.75rem;align-items:flex-start;font-size:.875rem"><div style="color:var(--good);margin-top:.125rem;flex-shrink:0">${icons.check}</div>${t}</li>`).join("")}
       </ul>
